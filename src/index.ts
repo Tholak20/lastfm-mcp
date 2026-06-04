@@ -1,3 +1,6 @@
+// src/index.ts — Streamable HTTP transport (MCP 2025-03-26)
+// Compatible Claude.ai (Accept: text/event-stream) ET Perplexity (Accept: application/json)
+
 export interface Env {
   LASTFM_API_KEY: string;
   MCP_TOKEN: string;
@@ -202,26 +205,87 @@ async function callTool(name: string, args: any, env: Env): Promise<any> {
   }
 }
 
+function isAuthorized(request: Request, env: Env): boolean {
+  const auth = request.headers.get("Authorization");
+  return !!auth && auth === `Bearer ${env.MCP_TOKEN}`;
+}
+
+// Construit la réponse JSON-RPC à partir de la méthode MCP
+async function handleMcpRequest(body: any, env: Env): Promise<object> {
+  const { method, params, id } = body;
+
+  if (method === "initialize") {
+    return {
+      jsonrpc: "2.0", id,
+      result: {
+        protocolVersion: "2025-03-26",
+        capabilities: { tools: {} },
+        serverInfo: { name: "mcp-lastfm", version: "1.0.0" },
+      },
+    };
+  }
+
+  if (method === "notifications/initialized") {
+    // Notification sans réponse attendue
+    return { jsonrpc: "2.0", id: null, result: null };
+  }
+
+  if (method === "tools/list") {
+    return { jsonrpc: "2.0", id, result: { tools: TOOLS } };
+  }
+
+  if (method === "tools/call") {
+    const { name, arguments: args } = params;
+    try {
+      const result = await callTool(name, args ?? {}, env);
+      return {
+        jsonrpc: "2.0", id,
+        result: { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] },
+      };
+    } catch (err: any) {
+      return {
+        jsonrpc: "2.0", id,
+        error: { code: -32000, message: err.message },
+      };
+    }
+  }
+
+  return {
+    jsonrpc: "2.0", id,
+    error: { code: -32601, message: "Method not found" },
+  };
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    // Auth check on /mcp endpoint
-    if (url.pathname === "/mcp") {
-      const auth = request.headers.get("Authorization");
-      if (!auth || auth !== `Bearer ${env.MCP_TOKEN}`) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
+    // CORS preflight
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept",
+        },
+      });
     }
 
     if (request.method === "GET" && url.pathname === "/") {
       return Response.json({ name: "mcp-lastfm", version: "1.0.0", user: DEFAULT_USER });
     }
 
+    // ── POST /mcp — Streamable HTTP (MCP 2025-03-26) ─────────────────────────
+    // Accept: application/json       → réponse JSON simple  (Perplexity)
+    // Accept: text/event-stream      → réponse SSE stream   (Claude)
     if (request.method === "POST" && url.pathname === "/mcp") {
+      if (!isAuthorized(request, env)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
       let body: any;
       try {
         body = await request.json();
@@ -229,40 +293,36 @@ export default {
         return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400 });
       }
 
-      const { method, params, id } = body;
+      const acceptsSSE = (request.headers.get("Accept") ?? "").includes("text/event-stream");
 
-      if (method === "initialize") {
-        return Response.json({
-          jsonrpc: "2.0", id,
-          result: {
-            protocolVersion: "2024-11-05",
-            capabilities: { tools: {} },
-            serverInfo: { name: "mcp-lastfm", version: "1.0.0" },
+      const rpcResponse = await handleMcpRequest(body, env);
+
+      // Notification sans contenu → 202 vide
+      if ((body.method as string)?.startsWith("notifications/")) {
+        return new Response(null, { status: 202 });
+      }
+
+      if (acceptsSSE) {
+        // Claude : réponse encapsulée dans un SSE stream
+        const payload = `event: message\ndata: ${JSON.stringify(rpcResponse)}\n\n`;
+        return new Response(payload, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Access-Control-Allow-Origin": "*",
           },
         });
       }
 
-      if (method === "tools/list") {
-        return Response.json({ jsonrpc: "2.0", id, result: { tools: TOOLS } });
-      }
-
-      if (method === "tools/call") {
-        const { name, arguments: args } = params;
-        try {
-          const result = await callTool(name, args ?? {}, env);
-          return Response.json({
-            jsonrpc: "2.0", id,
-            result: { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] },
-          });
-        } catch (err: any) {
-          return Response.json({
-            jsonrpc: "2.0", id,
-            error: { code: -32000, message: err.message },
-          });
-        }
-      }
-
-      return Response.json({ jsonrpc: "2.0", id, error: { code: -32601, message: "Method not found" } }, { status: 404 });
+      // Perplexity / autres : JSON direct
+      return new Response(JSON.stringify(rpcResponse), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
     }
 
     return new Response("Not found", { status: 404 });
