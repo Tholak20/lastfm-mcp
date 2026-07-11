@@ -14,7 +14,7 @@ npm run deploy:prod      # Deploy to production
 npm run lint             # ESLint (src/**/*.ts)
 npm run format           # Prettier --write
 npm run format:check     # Prettier --check (CI)
-npm run cf-typegen       # Regenerate Worker type bindings (run after changing wrangler.toml; produces worker-configuration.d.ts — generated, do not edit by hand)
+npm run cf-typegen       # Regenerate Worker type bindings (run after changing wrangler.jsonc; produces worker-configuration.d.ts — generated, do not edit by hand)
 ```
 
 ### Running Tests
@@ -145,6 +145,6 @@ src/
   utils/                # Cache, rate limiting, retry, logging, security, mood mapping
 ```
 
-Single Worker entry point configured in `wrangler.toml`: `main = "src/index-oauth.ts"`. The `[env.production]` block points to the same entry — it only renames the deployed Worker.
+Single Worker entry point configured in `wrangler.jsonc`: `main = "src/index-oauth.ts"`, Worker name `mcp-lastfm`. Deployment is handled by Cloudflare's native Git integration (Workers Builds, connected to `Tholak20/lastfm-mcp`, branch `main`): every push runs `npm run build` then `npx wrangler deploy`. No GitHub Actions deploy, no separate production environment.
 
 **Key dependencies:** `@modelcontextprotocol/sdk`, `@cloudflare/workers-oauth-provider`, `agents` (Cloudflare Agents SDK), `zod`.
