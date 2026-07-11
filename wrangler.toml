@@ -9,15 +9,15 @@ enabled = true
 # Development environment (default)
 [[kv_namespaces]]
 binding = "MCP_RL"
-id = "b4caaaa688cc45d2a9a85fe67ba53bfc"
+id = "b2d300eb168745a1abab5dcc58b19103"
 
 [[kv_namespaces]]
 binding = "MCP_SESSIONS"
-id = "a0bc40f523d54a6ab70fa947ac3daeaf"
+id = "88451f091f5447d4bfdfc18b482c9e00"
 
 [[kv_namespaces]]
 binding = "OAUTH_KV"
-id = "e04a5ec5441949ebb6e84281bf6598c3"
+id = "9dd06247c8d44ce8bd707144475ac66a"
 
 # Production environment
 [env.production]

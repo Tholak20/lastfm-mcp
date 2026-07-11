@@ -5,7 +5,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "mcp-lastfm",
-	"main": "src/index.ts",
+	"main": "src/index-oauth.ts",
 	"compatibility_date": "2026-05-23",
 	"observability": {
 		"enabled": true
@@ -13,6 +13,20 @@
 	"upload_source_maps": true,
 	"compatibility_flags": [
 		"nodejs_compat"
+	],
+	"kv_namespaces": [
+		{
+			"binding": "OAUTH_KV",
+			"id": "9dd06247c8d44ce8bd707144475ac66a"
+		},
+		{
+			"binding": "MCP_RL",
+			"id": "b2d300eb168745a1abab5dcc58b19103"
+		},
+		{
+			"binding": "MCP_SESSIONS",
+			"id": "88451f091f5447d4bfdfc18b482c9e00"
+		}
 	]
 	/**
 	 * Smart Placement
